@@ -1,0 +1,257 @@
+---
+title: "Sleep_Disorder"
+author: "Romario"
+date: "`r Sys.Date()`"
+output:
+ html_document:
+  code_folding: hide
+  toc: true
+  toc_float:
+   collapsed: true
+   smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+   warning=FALSE, message=FALSE, tidy=TRUE,	tidy.opts=list(arrow=TRUE,	indent=2),fig.width = 6, fig.align = 'center', fig.asp=0.618, out.width = '100%')
+```
+
+# Introduction ----------------------
+
+Sleep is an important part of human life. When we are sleeping, our brains can retain the knowledge we have acquired throughout the day and restore our energy.
+
+However, nowadays, it is really common for adults not to have a good sleep time, perhaps due to their occupations, daily stress, or other bad habits.
+
+So, can machine learning help them get a better night's sleep?
+
+# Goals
+
+Train a machine learning model capable of predicting whether someone will have a sleep disorder based on their lifestyle.
+
+# Exploring Dataset
+
+# Libraries ----------------------
+```{r}
+library(here)
+library(tidyverse)
+```
+
+# Dataset ----------------------
+```{r}
+data_raw = readr::read_csv(file = here::here('data/raw/Sleep_health_and_lifestyle_dataset.csv'))
+data_raw |> head(5)
+```
+# Clean Dataset ----------------------
+
+## Rename Dataset
+```{r}
+print('--------------Before Rename-----------------')
+colnames(data_raw)
+
+print('--------------------After Rename------------------')
+colnames(data_raw)=lapply(colnames(data_raw),
+                      function(x) stringr::str_replace_all(string=x,pattern=" ", repl="_")) |>
+                      tolower()
+
+data_renamed = data_raw
+colnames(data_renamed)
+
+```
+## Transform character and integer in factors
+
+```{r}
+transform_in_factor=c("gender","occupation","bmi_category","sleep_disorder",'stress_level','quality_of_sleep')
+
+for(x in transform_in_factor){
+  data_renamed[x] = factor(data_renamed[[x]])
+}
+
+rm(x)
+
+rm(transform_in_factor)
+data_renamed_factored = data_renamed
+```
+
+
+## Rename Factor "Normal Weight" for "Underweight" 
+```{r}
+data_renamed_factored$bmi_category <- recode(data_renamed_factored$bmi_category,`Normal Weight`='Underweight')
+
+```
+
+```{r}
+summary(data_renamed_factored)
+```
+
+## Split blood pressure
+```{r}
+data_renamed_factored_new_features= data_renamed_factored |>  separate_wider_delim(blood_pressure, "/", names = c("systolic_pressure", "diastolic_pressure"))
+
+for(x in c("systolic_pressure", "diastolic_pressure")) {
+  data_renamed_factored_new_features[x] = as.numeric(data_renamed_factored_new_features[[x]])
+}
+
+rm(x)
+
+data_renamed_factored_new_features |> summary()
+```
+
+# EDA ----------------------
+
+```{r}
+data_eda = data_renamed_factored_new_features
+data_eda = data_eda |>  dplyr::select(-c('person_id'))
+```
+
+## Numeric Features 
+```{r}
+columns_numeric = data_eda |> dplyr::select_if(is.numeric) |> colnames()
+#columns_numeric
+
+for( x in columns_numeric){
+  g = data_eda |> ggplot() +
+    geom_histogram(aes(.data[[x]]), bins = 30) +
+    xlab(x)
+  
+  print(g)
+    
+}
+
+rm(columns_numeric,x,g)
+```
+
+## Sleep Disorder For Categorical Features 
+```{r}
+columns_factor = data_eda |> dplyr::select_if(is.factor) |>  dplyr:: select(-c(sleep_disorder)) |> colnames()
+
+for( x in columns_factor){
+  g = data_eda |>
+    ggplot() +
+    geom_bar(aes(x=sleep_disorder,
+                 fill=.data[[x]]),
+             position ='dodge2')
+  
+  print(g)
+  }
+
+rm(columns_factor,x,g)
+```
+
+
+# Train Models ----------------------
+
+## Libraries 
+```{r}
+library(here)
+library(tidymodels)
+library(tidyverse)
+library(rpart.plot)
+```
+
+
+## Split Dataset 
+```{r}
+set.seed(1)
+split <- rsample::initial_split(data_eda, prop = .80,strata = sleep_disorder)
+
+train_set <- rsample::training(split)
+test_set <- rsample::testing(split)
+```
+
+
+## Decision Tree 
+```{r}
+model_decision_tree=parsnip::decision_tree(mode='classification', engine = 'rpart')
+model_decision_tree_fit= model_decision_tree |> fit( train_set$sleep_disorder ~ ., data = train_set) 
+graph_model_decision_tree_fit <- extract_fit_engine(model_decision_tree_fit)
+rpart.plot::rpart.plot(graph_model_decision_tree_fit)
+```
+
+## SVM Linear
+```{r}
+model_svm_linear=parsnip::svm_linear(mode ='classification',engine = 'kernlab')
+model_svm_linear_fit= model_svm_linear |> fit( train_set$sleep_disorder ~ ., data = train_set) 
+model_svm_linear_fit
+```
+
+## SVM Radial 
+```{r}
+model_svm_radial=parsnip::svm_rbf(mode ='classification',engine = 'kernlab')
+model_svm_radial_fit= model_svm_radial |> fit( train_set$sleep_disorder ~ ., data = train_set) 
+model_svm_radial_fit
+```
+
+## Random Forest 
+```{r}
+model_random_forest= rand_forest() |> 
+  set_engine('randomForest') |> 
+  set_mode('classification')
+
+model_random_forest_workflow =  workflow() |>
+  add_model(model_random_forest) |> 
+  add_formula(sleep_disorder ~ .)
+
+model_random_forest_fit = fit(model_random_forest_workflow, train_set)
+
+```
+
+# Evaluate Model ----------------------
+
+## Preprocess  
+```{r}
+test_set_without_class=subset(test_set,select = -c(sleep_disorder))
+test_set_only_class=subset(test_set,select = c(sleep_disorder))
+
+
+classification_metrics <- yardstick::metric_set(accuracy, mcc, f_meas)
+```
+
+
+## Decision Tree 
+```{r}
+predict(model_decision_tree_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  yardstick::conf_mat(truth = sleep_disorder, estimate = .pred_class)
+
+predict(model_decision_tree_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  classification_metrics(truth = sleep_disorder, estimate = .pred_class)
+```
+
+## SVM Linear
+```{r}
+predict(model_svm_linear_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  yardstick::conf_mat(truth = sleep_disorder, estimate = .pred_class)
+
+predict(model_svm_linear_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  classification_metrics(truth = sleep_disorder, estimate = .pred_class)
+```
+
+## SVM  Radial 
+```{r}
+predict(model_svm_radial_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  yardstick::conf_mat(truth = sleep_disorder, estimate = .pred_class)
+
+predict(model_svm_radial_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  classification_metrics(truth = sleep_disorder, estimate = .pred_class)
+```
+
+## Random Florest
+```{r}
+predict(model_random_forest_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  yardstick::conf_mat(truth = sleep_disorder, estimate = .pred_class)
+
+predict(model_random_forest_fit,test_set_without_class ) |>
+  dplyr::bind_cols(test_set_only_class)  |> 
+  classification_metrics(truth = sleep_disorder, estimate = .pred_class)
+```
+
+# Conclusion --------------------
+
+The model with the best metrics was the SVM with Linear Kernel. However, its performance can become better with some tuning techniques.
+

@@ -1,0 +1,9 @@
+"0","data_raw = readr::read_csv(file = here::here('data/raw/Sleep_health_and_lifestyle_dataset.csv'))"
+"2","[1mRows: [22m[34m374[39m [1mColumns: [22m[34m13[39m"
+"2","[36m──[39m [1mColumn specification[22m [36m───────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+[1mDelimiter:[22m "",""
+[31mchr[39m (5): Gender, Occupation, BMI Category, Blood Pressure, Sleep Disorder
+[32mdbl[39m (8): Person ID, Age, Sleep Duration, Quality of Sleep, Physical Activity Level, Stress Level, Heart Rate, Daily Steps"
+"2","
+[36mℹ[39m Use `spec()` to retrieve the full column specification for this data.
+[36mℹ[39m Specify the column types or set `show_col_types = FALSE` to quiet this message."
