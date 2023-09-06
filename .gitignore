@@ -1,4 +1,6 @@
 *mp4
-.Rproj.user/
-.RDATA
-.Rhistory
+/.Rproj.user
+/metadatas
+/.RData
+/.Rhistory
+/kaggle_Sleep_Health_and_Lifestyle_Dataset.Rproj
